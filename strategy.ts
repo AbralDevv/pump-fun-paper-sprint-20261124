@@ -27,7 +27,7 @@
 //
 // So this bot is a barbell, in its own code and with its own numbers:
 //
-// - MOONSHOT HOLDS (at most 2 at once): buy a fresh coin early (real
+// - MOONSHOT HOLDS (at most 3 at once): buy a fresh coin early (real
 //   reserve >= 1 SOL, age <= 100 slots), 0.05 SOL or the order cap if
 //   smaller; add 0.15 SOL once when the price doubles from the first buy
 //   and the reserve reaches 20 SOL. No stop-loss, no clock: the position
@@ -41,7 +41,10 @@
 //   past 10 slots, and never send a buy smaller than 0.01 SOL (dust buys
 //   pay a full transaction fee for nothing). The churn exists to clear
 //   the 20-coin round-trip bar and to keep slots working while the holds
-//   sit; its expected loss is small because its stakes are small.
+//   sit — and it stops after 32 buys: the sniper's gross edge measured
+//   ~breakeven on the dev window, so every extra trip is ~3% of stake
+//   paid in fees for nothing, and the churn's expected loss stays small
+//   because both its stakes and its trip count are capped.
 //
 // A position is valued by what selling it would actually pay — selling
 // tokens against a constant-product curve pays tokens * vq / (vt +
@@ -75,7 +78,7 @@ const HOLD_ADD_PRICE_DEN = 1;
 const HOLD_ADD_MIN_REAL_SOL = 20; // add only once real reserve >= 20 SOL
 const HOLD_MIN_REAL_SOL = 1; // moonshot entry: real reserve >= 1 SOL
 const HOLD_MAX_AGE_SLOTS = 100; // moonshot entry: coin age <= 100 slots
-const HOLD_MAX_OPEN = 2; // at most this many moonshot holds at once
+const HOLD_MAX_OPEN = 3; // at most this many moonshot holds at once
 const HOLD_TAKE_PROFIT_NUM = 5; // moonshot sells when value >= cost * 5/1
 const HOLD_TAKE_PROFIT_DEN = 1;
 const CHURN_STAKE_SOL = 0.1; // sniper buy size per coin
@@ -88,6 +91,9 @@ const CHURN_TAKE_PROFIT_DEN = 100;
 const CHURN_STOP_LOSS_NUM = 88; // sniper sells when value <= cost * 88/100
 const CHURN_STOP_LOSS_DEN = 100;
 const CHURN_MAX_HOLD_SLOTS = 10; // sniper never holds past this many slots
+const CHURN_MAX_BUYS = 32; // sniper buys are capped: the churn exists to clear
+// the 20-coin round-trip bar, and every extra trip pays ~3% in fees for a
+// ~breakeven gross edge, so the churn stops once the bar is safely cleared
 const MAX_ORDERS_PER_BATCH = 16; // hard cap from hello.caps, re-checked live
 
 interface Tape {
@@ -128,6 +134,7 @@ export function createStrategy(): Bot {
   const pendingBuy = new Set<Pubkey>();
   const pendingAdd = new Set<Pubkey>();
   let holdOpen = 0;
+  let churnBuysSent = 0;
 
   function tapeFor(mint: Pubkey): Tape {
     let tape = tapes.get(mint);
@@ -323,7 +330,9 @@ export function createStrategy(): Bot {
           continue;
         }
         // Sniper churn: first 3 slots, unbundled opening tape, creator
-        // has not sold, real reserve >= 0.3 SOL, buy >= 0.01 SOL.
+        // has not sold, real reserve >= 0.3 SOL, buy >= 0.01 SOL — and
+        // only while the churn cap is not reached.
+        if (churnBuysSent >= CHURN_MAX_BUYS) continue;
         if (tape.createdSlot === null) continue;
         if (batch.slot - tape.createdSlot > CHURN_MAX_AGE_SLOTS) continue;
         if (tape.creatorSold) continue;
@@ -335,6 +344,7 @@ export function createStrategy(): Bot {
         if (freeCash < amount + txFee) continue;
         orders.push({ side: 'buy', mint, quote_lamports: amount, max_slippage_bps: 10_000 });
         pendingBuy.add(mint);
+        churnBuysSent += 1;
         tape.decidedChurn = true;
         tape.mode = 'churn';
         tape.firstBuyPrice = scaledPrice(curve.virtual_quote_reserves, curve.virtual_token_reserves);

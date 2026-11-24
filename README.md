@@ -12,17 +12,22 @@ house replay: no real funds, no network, no secrets.
 
 A launch sniper with a rug filter and fast exits:
 
-- **Entry:** a coin is bought only in its first 5 slots, only once its real
-  SOL reserve reaches 0.3 SOL, only when the opening tape looks unbundled
-  (at most 4 distinct non-creator buyers seen, and the creator has not
-  sold). One buy per coin, 0.1 SOL target, capped by the 1%-of-reserve
-  order cap. At most 5 open positions.
-- **Exits:** every position is sold whole on the first of take-profit (+15%
-  vs cost), stop-loss (−12%), or a max-hold of 25 slots. Exits are decided
-  on the realizable sale value — what selling the tokens against the
-  constant-product curve would actually pay, net of curve fees and the
-  transaction fee — not on the marginal-price mark, which overstates
-  proceeds by the sale's own price impact.
+- **Moonshot holds (at most 3 at once):** a fresh coin is bought early
+  (real reserve ≥ 1 SOL, age ≤ 100 slots), 0.05 SOL; one 0.15 SOL add when
+  the price doubles from the first buy and the reserve reaches 20 SOL. No
+  stop-loss, no clock: the position leaves only on a +400% take-profit
+  (realizable value ≥ 5× cost) or when the harness flattens it at the end.
+- **Sniper churn (the other slots):** a coin is bought only in its first 3
+  slots, only when the opening tape looks unbundled (at most 3 distinct
+  non-creator buyers seen, and the creator has not sold). Take-profit
+  +15%, stop-loss −12%, leave at once when the creator sells, never hold
+  past 10 slots, never send a buy smaller than 0.01 SOL — and the churn
+  stops after 32 buys: it exists to clear the 20-coin round-trip bar, and
+  its gross edge measured ~breakeven, so extra trips are only fees.
+- **Exits** are decided on the realizable sale value — what selling the
+  tokens against the constant-product curve would actually pay, net of
+  curve fees and the transaction fee — not on the marginal-price mark,
+  which overstates proceeds by the sale's own price impact.
 - **Deterministic:** every decision comes from the batch stream (slots,
   reserves, fills) and insertion-ordered maps. No clock, no randomness, no
   environment reads — the same batch stream always produces the same
